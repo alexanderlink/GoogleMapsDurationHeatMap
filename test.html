@@ -29,28 +29,39 @@ var geocoder;
 var bounds = new google.maps.LatLngBounds();
 var markersArray = [];
 
-var origin1 = new google.maps.LatLng(49.2936688, 8.5417212);
-var origin2 = new google.maps.LatLng(49.2936688, 8.7417212);
-var destinationB = new google.maps.LatLng(49.2936688, 8.6417212);
+var destination = new google.maps.LatLng(49.2936688, 8.6417212);
 
 var destinationIcon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=D|FF0000|000000';
 var originIcon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=O|FFFF00|000000';
 
 function initialize() {
   var opts = {
-    center: new google.maps.LatLng(55.53, 9.4),
+    center: new google.maps.LatLng(49.2936688, 8.6417212),
     zoom: 10
   };
   map = new google.maps.Map(document.getElementById('map-canvas'), opts);
   geocoder = new google.maps.Geocoder();
 }
 
+function calculateOrigins(dest) {
+  var delta = 0.01;
+  var nr = 2;
+  var origins = [];
+  for(var lat = dest.lat()-(delta*nr); lat < dest.lat()+(delta*nr); lat+=delta) {
+    for(var lng = dest.lng()-(delta*nr); lat < dest.lng()+(delta*nr); lng+=delta) {
+      origins.push(new google.maps.LatLng(lat, lng));
+    }
+  }
+  return origins;
+}
+
 function calculateDistances() {
   var service = new google.maps.DistanceMatrixService();
+  var origins = calculateOrigins(destination);
   service.getDistanceMatrix(
     {
-      origins: [origin1, origin2],
-      destinations: [destinationB],
+      origins: origins,
+      destinations: [destination],
       travelMode: google.maps.TravelMode.DRIVING,
       unitSystem: google.maps.UnitSystem.METRIC,
       avoidHighways: false,

@@ -29,6 +29,11 @@ var geocoder;
 var bounds = new google.maps.LatLngBounds();
 var markersArray = [];
 
+var delta = 0.01;
+var count = 2;
+var reqOrigins = [];
+
+
 var destination = new google.maps.LatLng(49.2936688, 8.6417212);
 
 var destinationIcon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=D|FF0000|000000';
@@ -44,23 +49,59 @@ function initialize() {
 }
 
 function calculateOrigins(dest) {
-  var delta = 0.01;
-  var nr = 2;
-  var origins = [];
-  for(var lat = dest.lat()-(delta*nr); lat < dest.lat()+(delta*nr); lat+=delta) {
-    for(var lng = dest.lng()-(delta*nr); lat < dest.lng()+(delta*nr); lng+=delta) {
-      origins.push(new google.maps.LatLng(lat, lng));
+  reqOrigins = [];
+  for(var i = 0; i < count; i++) {
+    for(var j = 0; j < count; j++) {
+      var lat = dest.lat() - (delta*count/2) + (delta*i);
+      var lng = dest.lng() - (delta*count/2) + (delta*j);
+      reqOrigins.push(new google.maps.LatLng(lat, lng));
     }
   }
-  return origins;
+  return reqOrigins;
+}
+
+function calcColor(min, max, value) {
+  return '#ff0000';
+}
+
+function markRectangles(areas) {
+  var max = 0;
+  var min = 999999999;
+  for(var i = 0; i < areas.length; i++) {
+    var area = areas[i];
+    min = Math.min(min, area.duration);
+    max = Math.max(max, area.duration);
+  }
+  for(var i = 0; i < areas.length; i++) {
+    var area = areas[i];
+    markRectangle(area.origin, calcColor(min, max, area.duration));
+  }  
+}
+
+function markRectangle(location, color) {
+   var lat = location.lat();
+   var lng = location.lng();
+   alert(lat);
+   var rectangle = new google.maps.Rectangle({
+          strokeColor: color,
+          strokeOpacity: 0.8,
+          strokeWeight: 2,
+          fillColor: color,
+          fillOpacity: 0.1,
+          map: map,
+          bounds: new google.maps.LatLngBounds(
+            new google.maps.LatLng(lat-(delta/2.0), lng-(delta/2.0)),
+            new google.maps.LatLng(lat+(delta/2.0), lng+(delta/2.0))
+          )
+        });
 }
 
 function calculateDistances() {
   var service = new google.maps.DistanceMatrixService();
-  var origins = calculateOrigins(destination);
+  reqOrigins = calculateOrigins(destination);
   service.getDistanceMatrix(
     {
-      origins: origins,
+      origins: reqOrigins,
       destinations: [destination],
       travelMode: google.maps.TravelMode.DRIVING,
       unitSystem: google.maps.UnitSystem.METRIC,
@@ -79,16 +120,22 @@ function callback(response, status) {
     outputDiv.innerHTML = '';
     deleteOverlays();
 
+    var areas = [];
+    
     for (var i = 0; i < origins.length; i++) {
       var results = response.rows[i].elements;
-      addMarker(origins[i], false);
+      //addMarker(origins[i], false);
       for (var j = 0; j < results.length; j++) {
         addMarker(destinations[j], true);
+        areas.push({origin: reqOrigins[i], distance: results[j].distance, duration: results[j].duration});
         outputDiv.innerHTML += origins[i] + ' to ' + destinations[j]
             + ': ' + results[j].distance.text + ' in '
             + results[j].duration.text + '<br>';
       }
     }
+    
+    markRectangles(areas);
+    
   }
 }
 
@@ -103,14 +150,14 @@ function addMarker(location, isDestination) {
     if (status == google.maps.GeocoderStatus.OK) {
       bounds.extend(results[0].geometry.location);
       map.fitBounds(bounds);
-      /*var marker = new google.maps.Marker({
+      var marker = new google.maps.Marker({
         map: map,
         position: results[0].geometry.location,
         icon: icon
       });
-      markersArray.push(marker);*/
+      markersArray.push(marker);
       
-      var rectangle = new google.maps.Rectangle({
+      /*var rectangle = new google.maps.Rectangle({
           strokeColor: '#FF0000',
           strokeOpacity: 0.8,
           strokeWeight: 2,
@@ -121,7 +168,7 @@ function addMarker(location, isDestination) {
             new google.maps.LatLng(49.2936688, 8.6317212),
             new google.maps.LatLng(49.2836688, 8.6417212)
           )
-        });
+        });*/
       
       
     } else {

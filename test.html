@@ -35,10 +35,12 @@ var markersArray = [];
 var areas = [];
 var processed = -1;
 
+var service;
 var delta;
 var count;
 var sleep;
 var rounds;
+var minSleep = 1000;
 var allOrigins = [];
 
 
@@ -137,32 +139,15 @@ function calculateDistances() {
   delta = Number(document.getElementById("delta").value);
   count = Number(document.getElementById("count").value);
   sleep = Number(document.getElementById("sleep").value);
-  var service = new google.maps.DistanceMatrixService();
+  service = new google.maps.DistanceMatrixService();
   allOrigins = calculateOrigins(destination);
   areas = [];
   var allDeferred = [];
   var promises = [];
   rounds = allOrigins.length/25;
   addMarker(destination);
-  for(var i = 0; i < rounds; i++) {
-      allDeferred[i] = Q.defer();
-      promises[i] = allDeferred[i].promise;
-      setTimeout(partial(function(i, deferred){ 
-          var start = i*15;
-          var end = start+25 > allOrigins.length ? allOrigins.length : start+25;
-          var origins = allOrigins.slice(start, end);
-          service.getDistanceMatrix(
-            {
-              origins: origins,
-              destinations: [destination],
-              travelMode: google.maps.TravelMode.DRIVING,
-              unitSystem: google.maps.UnitSystem.METRIC,
-              avoidHighways: false,
-              avoidTolls: false
-            }, partial(callback, i, deferred));
-      }, i, allDeferred[i]), sleep * i);
-  }
-  Q.all(promises).then(
+  
+  processRecursive(0, rounds).then(
     function success() {
       markRectangles(areas);
     },
@@ -172,11 +157,72 @@ function calculateDistances() {
   );
 }
 
-function callback(iteration, deferred, response, status) {
+function processRecursive(i, rounds, timeout) {
+  var deferred = Q.defer();
+  if(!timeout) timeout = 0;
+  console.log('processRecursive ' + i + ', ' + rounds + ', ' + timeout);
+
+  setTimeout(partial(function(i, rounds, timeout){ 
+  
+    var start = i*15;
+    var end = start+25 > allOrigins.length ? allOrigins.length : start+25;
+    var origins = allOrigins.slice(start, end);
+    service.getDistanceMatrix(
+    {
+      origins: origins,
+      destinations: [destination],
+      travelMode: google.maps.TravelMode.DRIVING,
+      unitSystem: google.maps.UnitSystem.METRIC,
+      avoidHighways: false,
+      avoidTolls: false
+    }, 
+    function(response, status) {
+      callback(i, response, status).then(
+        function success() {
+          if(i < rounds) {
+            processRecursive(i+1, rounds, minSleep).then(
+              function success2() {
+                deferred.resolve();
+              },
+              function error2(err) {
+                deferred.reject(err);
+              }
+            )
+          } else {
+            deferred.resolve();
+          }
+        },
+        function error(err) {
+          if(err === "OVER_QUERY_LIMIT") {
+            if(timeout < minSleep) timeout = minSleep
+            else timeout = timeout * 2;
+            console.log('OVER_QUERY_LIMIT - increasing to ' + timeout);
+            processRecursive(i, rounds, timeout).then(
+              function success2() {
+                deferred.resolve();
+              },
+              function error2(err) {
+                deferred.reject(err);
+              }
+            )
+          } else {
+            deferred.reject(err);
+          }
+        }
+      );
+    });
+
+  }, i, rounds, timeout), timeout);
+
+  return deferred.promise;
+}
+
+function callback(iteration, response, status) {
+  var deferred = Q.defer();
   try {
     console.log('Callback['+iteration+']: ' + response + '/' + status);
     if (status != google.maps.DistanceMatrixStatus.OK) {
-      logError('Error was: ' + status);
+      if(err !== "OVER_QUERY_LIMIT") logError('Error1 was: ' + status + ' / ' + JSON.stringify(response));
       deferred.reject(status);
     } else {
       var origins = response.originAddresses;
@@ -210,9 +256,10 @@ function callback(iteration, deferred, response, status) {
       deferred.resolve();
     }
   } catch(err) {
-    logError('Error was: ' + err);
+    logError('Error2 was: ' + err);
     deferred.reject(err);
   }
+  return deferred.promise;
 }
 
 function addMarker(reqLocation) {

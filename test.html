@@ -28,10 +28,12 @@ var map;
 var geocoder;
 var bounds = new google.maps.LatLngBounds();
 var markersArray = [];
+var areas = [];
+var processed = -1;
 
-var delta = 0.01;
-var count = 2;
-var reqOrigins = [];
+var delta = 0.005;
+var count = 50;
+var allOrigins = [];
 
 
 var destination = new google.maps.LatLng(49.2936688, 8.6417212);
@@ -49,19 +51,34 @@ function initialize() {
 }
 
 function calculateOrigins(dest) {
-  reqOrigins = [];
+  var origins = [];
+  var log = '';
+  log += dest.lat() + " / " + dest.lng() + "\n";
   for(var i = 0; i < count; i++) {
     for(var j = 0; j < count; j++) {
-      var lat = dest.lat() - (delta*count/2) + (delta*i);
-      var lng = dest.lng() - (delta*count/2) + (delta*j);
-      reqOrigins.push(new google.maps.LatLng(lat, lng));
+      var lat = dest.lat() - (delta*count/2.0) + (delta/2.0) + (delta*i);
+      var lng = dest.lng() - (delta*count/2.0) + (delta/2.0) + (delta*j);
+      log += lat + " / " + lng + "\n";
+      origins.push(new google.maps.LatLng(lat, lng));
     }
   }
-  return reqOrigins;
+  return origins;
 }
 
 function calcColor(min, max, value) {
-  return '#ff0000';
+  var percent = (value-min) / (max-min);
+  if(percent <= 0.05) return '#00ff00'
+  if(percent <= 0.15) return '#00df00'
+  if(percent <= 0.25) return '#1fbf00'
+  if(percent <= 0.35) return '#3f9f00'
+  if(percent <= 0.45) return '#5f7f00'
+  if(percent <= 0.55) return '#7f5f00'
+  if(percent <= 0.65) return '#9f3f00'
+  if(percent <= 0.75) return '#bf1f00'
+  if(percent <= 0.85) return '#df0000'
+  if(percent <= 0.95) return '#ff0000';
+  if(percent <= 1.00) return '#ff0000';
+  return '#0000ff';
 }
 
 function markRectangles(areas) {
@@ -69,25 +86,25 @@ function markRectangles(areas) {
   var min = 999999999;
   for(var i = 0; i < areas.length; i++) {
     var area = areas[i];
-    min = Math.min(min, area.duration);
-    max = Math.max(max, area.duration);
+    min = Math.min(min, area.duration.value);
+    max = Math.max(max, area.duration.value);
   }
   for(var i = 0; i < areas.length; i++) {
     var area = areas[i];
-    markRectangle(area.origin, calcColor(min, max, area.duration));
+    markRectangle(area.origin, calcColor(min, max, area.duration.value), area.duration.text);
   }  
 }
 
-function markRectangle(location, color) {
+function markRectangle(location, color, durationText) {
    var lat = location.lat();
    var lng = location.lng();
-   alert(lat);
+   outputDiv.innerHTML += '...mark rectangle: ' + lat + '/' + lng + '<br>';
    var rectangle = new google.maps.Rectangle({
           strokeColor: color,
-          strokeOpacity: 0.8,
-          strokeWeight: 2,
+          strokeOpacity: 0.35,
+          strokeWeight: 1,
           fillColor: color,
-          fillOpacity: 0.1,
+          fillOpacity: 0.3,
           map: map,
           bounds: new google.maps.LatLngBounds(
             new google.maps.LatLng(lat-(delta/2.0), lng-(delta/2.0)),
@@ -96,55 +113,86 @@ function markRectangle(location, color) {
         });
 }
 
-function calculateDistances() {
-  var service = new google.maps.DistanceMatrixService();
-  reqOrigins = calculateOrigins(destination);
-  service.getDistanceMatrix(
-    {
-      origins: reqOrigins,
-      destinations: [destination],
-      travelMode: google.maps.TravelMode.DRIVING,
-      unitSystem: google.maps.UnitSystem.METRIC,
-      avoidHighways: false,
-      avoidTolls: false
-    }, callback);
+function partial(funct) {
+    var args = Array.prototype.slice.call(arguments).splice(1);
+    return function() {
+      var allArgs = args.concat(Array.prototype.slice.call(arguments));
+      return funct.apply(this, allArgs);
+    };
 }
 
-function callback(response, status) {
+function calculateDistances() {
+  var service = new google.maps.DistanceMatrixService();
+  allOrigins = calculateOrigins(destination);
+  areas = [];
+  var rounds = allOrigins.length/25;
+  for(var i = 0; i < rounds; i++) {
+      setTimeout(partial(function(i){ 
+          var start = i*15;
+          var end = start+25 > allOrigins.length ? allOrigins.length : start+25;
+          var origins = allOrigins.slice(start, end);
+          service.getDistanceMatrix(
+            {
+              origins: origins,
+              destinations: [destination],
+              travelMode: google.maps.TravelMode.DRIVING,
+              unitSystem: google.maps.UnitSystem.METRIC,
+              avoidHighways: false,
+              avoidTolls: false
+            }, partial(callback, i));
+      }, i), 5000 * i);
+  }
+  /*while(processed < rounds - 1) {
+  }*/
+  markRectangles(areas);
+}
+
+function callback(iteration, response, status) {
+  try {
+    console.log('Callback['+iteration+']: ' + response + '/' + status);
   if (status != google.maps.DistanceMatrixStatus.OK) {
-    alert('Error was: ' + status);
+    console.error('Error was: ' + status);
   } else {
     var origins = response.originAddresses;
     var destinations = response.destinationAddresses;
     var outputDiv = document.getElementById('outputDiv');
-    outputDiv.innerHTML = '';
-    deleteOverlays();
+    //outputDiv.innerHTML = '';
+    //deleteOverlays();
 
-    var areas = [];
-    
+    addMarker(destination, true, destination);
+
     for (var i = 0; i < origins.length; i++) {
       var results = response.rows[i].elements;
-      //addMarker(origins[i], false);
       for (var j = 0; j < results.length; j++) {
-        addMarker(destinations[j], true);
-        areas.push({origin: reqOrigins[i], distance: results[j].distance, duration: results[j].duration});
+        //addMarker(origins[i], false, allOrigins[i], results[j].duration);
+        //addMarker(destinations[j], true, destination, results[j].duration);
+        areas.push({origin: allOrigins[i+iteration*25], distance: results[j].distance, duration: results[j].duration});
         outputDiv.innerHTML += origins[i] + ' to ' + destinations[j]
             + ': ' + results[j].distance.text + ' in '
             + results[j].duration.text + '<br>';
       }
     }
-    
-    markRectangles(areas);
-    
+    processed = iteration;
+  }
+  } catch(err) {
+    console.error('Error was: ' + err);
   }
 }
 
-function addMarker(location, isDestination) {
+function addMarker(location, isDestination, reqLocation) {
+    var marker = new google.maps.Marker({
+        map: map,
+        position: reqLocation,
+        icon: destinationIcon
+      });
+}
+
+/*function addMarkerOld(location, isDestination, reqLocation, duration) {
   var icon;
   if (isDestination) {
     icon = destinationIcon;
   } else {
-    icon = originIcon;
+    icon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=' + duration.text + '|FFFF00|000000';
   }
   geocoder.geocode({'address': location}, function(results, status) {
     if (status == google.maps.GeocoderStatus.OK) {
@@ -152,10 +200,11 @@ function addMarker(location, isDestination) {
       map.fitBounds(bounds);
       var marker = new google.maps.Marker({
         map: map,
-        position: results[0].geometry.location,
-        icon: icon
+        position: reqLocation,
+        icon: icon,
+        title: duration ? ''+duration : ''
       });
-      markersArray.push(marker);
+      markersArray.push(marker);*/
       
       /*var rectangle = new google.maps.Rectangle({
           strokeColor: '#FF0000',
@@ -171,19 +220,19 @@ function addMarker(location, isDestination) {
         });*/
       
       
-    } else {
-      alert('Geocode was not successful for the following reason: '
+    /*} else {
+      console.error('Geocode was not successful for the following reason: '
         + status);
     }
   });
-}
+}*/
 
-function deleteOverlays() {
+/*function deleteOverlays() {
   for (var i = 0; i < markersArray.length; i++) {
     markersArray[i].setMap(null);
   }
   markersArray = [];
-}
+}*/
 
 google.maps.event.addDomListener(window, 'load', initialize);
 

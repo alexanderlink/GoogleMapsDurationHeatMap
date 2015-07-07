@@ -32,7 +32,7 @@ var map;
 var geocoder;
 var bounds = new google.maps.LatLngBounds();
 var markersArray = [];
-var areas = [];
+var areas = {};
 var processed = -1;
 
 var service;
@@ -92,15 +92,15 @@ function calcColor(min, max, value) {
 function markRectangles(areas) {
   var max = 0;
   var min = 999999999;
-  for(var i = 0; i < areas.length; i++) {
-    var area = areas[i];
+  Object.keys(areas).forEach(function(key) {
+    var area = areas[key];
     min = Math.min(min, area.duration.value);
     max = Math.max(max, area.duration.value);
-  }
-  for(var i = 0; i < areas.length; i++) {
-    var area = areas[i];
+  });
+  Object.keys(areas).forEach(function(key) {
+    var area = areas[key];
     markRectangle(area.origin, calcColor(min, max, area.duration.value), area.duration.text, area.distance.text);
-  }  
+  });  
 }
 
 function markRectangle(location, color, durationText, distanceText) {
@@ -124,7 +124,23 @@ function markRectangle(location, color, durationText, distanceText) {
       document.getElementById('distance').value = distanceText;
       document.getElementById('from').value = location.lat() + ', ' + location.lng();
       document.getElementById('to').value = destination.lat() + ', ' + destination.lng();
+      checkRoute(location);
   });
+}
+
+function checkRoute(location) {
+  service.getDistanceMatrix(
+    {
+      origins: [location],
+      destinations: [destination],
+      travelMode: google.maps.TravelMode.DRIVING,
+      unitSystem: google.maps.UnitSystem.METRIC,
+      avoidHighways: false,
+      avoidTolls: false
+    }, 
+    function(response, status) {
+      logInfo(JSON.stringify(response, null, '  '));
+    });
 }
 
 function partial(funct) {
@@ -141,7 +157,7 @@ function calculateDistances() {
   sleep = Number(document.getElementById("sleep").value);
   service = new google.maps.DistanceMatrixService();
   allOrigins = calculateOrigins(destination);
-  areas = [];
+  areas = {};
   var allDeferred = [];
   var promises = [];
   rounds = allOrigins.length/25;
@@ -175,9 +191,8 @@ function processRecursive(i, rounds, timeout) {
       unitSystem: google.maps.UnitSystem.METRIC,
       avoidHighways: false,
       avoidTolls: false
-    }, 
-    function(response, status) {
-      callback(i, response, status).then(
+    }, partial(function(origins, response, status) {
+      callback(i, origins, response, status).then(
         function success() {
           if(i < rounds) {
             processRecursive(i+1, rounds, minSleep).then(
@@ -210,14 +225,14 @@ function processRecursive(i, rounds, timeout) {
           }
         }
       );
-    });
+    }, origins));
 
   }, i, rounds, timeout), timeout);
 
   return deferred.promise;
 }
 
-function callback(iteration, response, status) {
+function callback(iteration, reqOrigins, response, status) {
   var deferred = Q.defer();
   try {
     console.log('Callback['+iteration+']: ' + response + '/' + status);
@@ -236,15 +251,15 @@ function callback(iteration, response, status) {
       for (var i = 0; i < origins.length; i++) {
         var results = response.rows[i].elements;
         for (var j = 0; j < results.length; j++) {
-          //addMarker(origins[i], false, allOrigins[i], results[j].duration);
+          //addMarker(origins[i], false, reqOrigins[i], results[j].duration);
           //addMarker(destinations[j], true, destination, results[j].duration);
-          var loc = allOrigins[i+iteration*25];
+          var loc = reqOrigins[i];
           if(loc) {
             var result = results[j];
             if(result && result.distance && result.duration) {
-              areas.push({origin: loc, resultOrigin: origins[i], distance: result.distance, duration: result.duration});
+              areas[loc.lat()+'/'+loc.lng()] = {origin: loc, resultOrigin: origins[i], distance: result.distance, duration: result.duration};
               //outputDiv.innerHTML = origins[i] + ': ' + results[j].distance.text + ' in '+ results[j].duration.text + '<br>' + outputDiv.innerHTML;
-              outputDiv.innerHTML = iteration + '/' + rounds + '  ' + loc.lat() + ' / ' + loc.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text + '<br>' + outputDiv.innerHTML;
+              logInfo(iteration + '/' + rounds + '  ' + loc.lat() + ' / ' + loc.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
             } else {
               console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ', j: ' + j + ' - ' + result);
             }
@@ -320,6 +335,11 @@ function addMarker(reqLocation) {
 function logError(err) {
   var div = document.getElementById('errorDiv');
   div.innerHTML = err + '<br>' + div.innerHTML;
+}
+
+function logInfo(message) {
+  var div = document.getElementById('outputDiv');
+  div.innerHTML = message + '<br>' + div.innerHTML;
 }
 
 google.maps.event.addDomListener(window, 'load', initialize);

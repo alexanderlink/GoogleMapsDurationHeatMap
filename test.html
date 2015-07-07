@@ -222,7 +222,7 @@ function callback(iteration, response, status) {
   try {
     console.log('Callback['+iteration+']: ' + response + '/' + status);
     if (status != google.maps.DistanceMatrixStatus.OK) {
-      if(err !== "OVER_QUERY_LIMIT") logError('Error1 was: ' + status + ' / ' + JSON.stringify(response));
+      if(status !== "OVER_QUERY_LIMIT") logError('Error1 was: ' + status + ' / ' + JSON.stringify(response));
       deferred.reject(status);
     } else {
       var origins = response.originAddresses;

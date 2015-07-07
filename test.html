@@ -75,7 +75,7 @@ function calculateOrigins(dest) {
 
 function calcColor(min, max, value) {
   var percent = (value-min) / (max-min);
-  console.log(value + ' -> ' + percent);
+  //console.log(value + ' -> ' + percent);
   if(percent <= 0.05) return '#00ff00'
   if(percent <= 0.15) return '#00df00'
   if(percent <= 0.25) return '#1fbf00'
@@ -105,8 +105,8 @@ function markRectangles(areas) {
 }
 
 function markRectangle(location, color, durationText, distanceText) {
-   var lat = location.lat();
-   var lng = location.lng();
+   var lat = location.A;
+   var lng = location.F;
    outputDiv.innerHTML = '...mark rectangle: ' + lat + '/' + lng + '<br>' + outputDiv.innerHTML;
    var rectangle = new google.maps.Rectangle({
           strokeColor: color,
@@ -124,7 +124,7 @@ function markRectangle(location, color, durationText, distanceText) {
   google.maps.event.addListener(rectangle, 'click', function() {
       document.getElementById('duration').value = durationText;
       document.getElementById('distance').value = distanceText;
-      document.getElementById('from').value = location.lat() + ', ' + location.lng();
+      document.getElementById('from').value = lat + ', ' + lng;
       document.getElementById('to').value = destination.lat() + ', ' + destination.lng();
       checkRoute(location);
   });
@@ -155,25 +155,28 @@ function partial(funct) {
 
 function calculateDistances() {
   deleteOverlays();
-  delta = Number(document.getElementById("delta").value);
-  count = Number(document.getElementById("count").value);
-  sleep = Number(document.getElementById("sleep").value);
-  service = new google.maps.DistanceMatrixService();
-  allOrigins = calculateOrigins(destination);
-  areas = {};
-  var allDeferred = [];
-  var promises = [];
-  rounds = allOrigins.length/25;
   addMarker(destination);
-  
-  processRecursive(0, rounds).then(
-    function success() {
-      markRectangles(areas);
-    },
-    function error(err) {
-      logError('Some promises failed!');
-    }
-  );
+  if(document.getElementById("result").value) {
+    areas = JSON.parse(document.getElementById("result").value);
+    markRectangles(areas);
+  } else {
+    delta = Number(document.getElementById("delta").value);
+    count = Number(document.getElementById("count").value);
+    sleep = Number(document.getElementById("sleep").value);
+    service = new google.maps.DistanceMatrixService();
+    allOrigins = calculateOrigins(destination);
+    areas = {};
+    rounds = allOrigins.length/25;
+    processRecursive(0, rounds).then(
+      function success() {
+        document.getElementById("result").value = JSON.stringify(areas);
+        markRectangles(areas);
+      },
+      function error(err) {
+        logError('Some promises failed!');
+      }
+    );
+  }
 }
 
 function processRecursive(i, rounds, timeout) {
@@ -254,7 +257,7 @@ function callback(iteration, reqOrigins, response, status) {
             areas[origin.lat()+'/'+origin.lng()] = {origin: origin, distance: result.distance, duration: result.duration};
             logInfo(iteration + '/' + rounds + '  ' + origin.lat() + ' / ' + origin.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
           } else {
-            console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ', j: ' + j + ' - ' + result);
+            console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ' - ' + result);
           }
         } else {
           console.warn('origin undefined i: ' + i + ', iteration: ' + iteration);
@@ -310,7 +313,8 @@ google.maps.event.addDomListener(window, 'load', initialize);
           <input type="text" id="distance" value="km" size="12" readonly></input> 
           <input type="text" id="duration" value="min" size="12" readonly></input> <br/>
           <input type="text" id="from" value="from" size="40" readonly></input> <br/>
-          <input type="text" id="to" value="to" size="40" readonly></input>
+          <input type="text" id="to" value="to" size="40" readonly></input><br/>
+          <input type="text" id="result" value="" size="40"></input>
         </p>
       </div>
       <div id="errorDiv" style="color:red"></div>

@@ -120,6 +120,7 @@ function markRectangle(location, color, durationText, distanceText) {
             new google.maps.LatLng(lat+(delta/2.0), lng+(delta/2.0))
           )
         });
+  markersArray.push(rectangle);
   google.maps.event.addListener(rectangle, 'click', function() {
       document.getElementById('duration').value = durationText;
       document.getElementById('distance').value = distanceText;
@@ -153,6 +154,7 @@ function partial(funct) {
 }
 
 function calculateDistances() {
+  deleteOverlays();
   delta = Number(document.getElementById("delta").value);
   count = Number(document.getElementById("count").value);
   sleep = Number(document.getElementById("sleep").value);
@@ -268,11 +270,12 @@ function callback(iteration, reqOrigins, response, status) {
 }
 
 function addMarker(reqLocation) {
-    var marker = new google.maps.Marker({
-        map: map,
-        position: reqLocation,
-        icon: destinationIcon
-      });
+  var marker = new google.maps.Marker({
+      map: map,
+      position: reqLocation,
+      icon: destinationIcon
+    });
+  markersArray.push(marker);
 }
 
 function logError(err) {
@@ -283,6 +286,13 @@ function logError(err) {
 function logInfo(message) {
   var div = document.getElementById('outputDiv');
   div.innerHTML = message + '<br>' + div.innerHTML;
+}
+
+function deleteOverlays() {
+  for (var i = 0; i < markersArray.length; i++) {
+    markersArray[i].setMap(null);
+  }
+  markersArray = [];
 }
 
 google.maps.event.addDomListener(window, 'load', initialize);

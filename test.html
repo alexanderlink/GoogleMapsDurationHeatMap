@@ -12,11 +12,11 @@
 
       #map-canvas {
         height: 100%;
-        width: 50%;
+        width: 70%;
       }
       #content-pane {
         float:right;
-        width:48%;
+        width:28%;
         padding-left: 2%;
       }
       #outputDiv {
@@ -75,6 +75,7 @@ function calculateOrigins(dest) {
 
 function calcColor(min, max, value) {
   var percent = (value-min) / (max-min);
+  console.log(value + ' -> ' + percent);
   if(percent <= 0.05) return '#00ff00'
   if(percent <= 0.15) return '#00df00'
   if(percent <= 0.25) return '#1fbf00'
@@ -177,58 +178,60 @@ function processRecursive(i, rounds, timeout) {
   var deferred = Q.defer();
   if(!timeout) timeout = 0;
   console.log('processRecursive ' + i + ', ' + rounds + ', ' + timeout);
-
   setTimeout(partial(function(i, rounds, timeout){ 
-  
-    var start = i*15;
-    var end = start+25 > allOrigins.length ? allOrigins.length : start+25;
-    var origins = allOrigins.slice(start, end);
-    service.getDistanceMatrix(
-    {
-      origins: origins,
-      destinations: [destination],
-      travelMode: google.maps.TravelMode.DRIVING,
-      unitSystem: google.maps.UnitSystem.METRIC,
-      avoidHighways: false,
-      avoidTolls: false
-    }, partial(function(origins, response, status) {
-      callback(i, origins, response, status).then(
-        function success() {
-          if(i < rounds) {
-            processRecursive(i+1, rounds, minSleep).then(
-              function success2() {
-                deferred.resolve();
-              },
-              function error2(err) {
-                deferred.reject(err);
-              }
-            )
-          } else {
-            deferred.resolve();
+    var maxPerRequest = 25;
+    var start = i*maxPerRequest;
+    var end = start+maxPerRequest;
+    if(end > allOrigins.length) end = allOrigins.length;
+    if(end > start) {
+      var origins = allOrigins.slice(start, end);
+      service.getDistanceMatrix(
+      {
+        origins: origins,
+        destinations: [destination],
+        travelMode: google.maps.TravelMode.DRIVING,
+        unitSystem: google.maps.UnitSystem.METRIC,
+        avoidHighways: false,
+        avoidTolls: false
+      }, partial(function(origins, response, status) {
+        callback(i, origins, response, status).then(
+          function success() {
+            if(i < rounds) {
+              processRecursive(i+1, rounds, timeout).then(
+                function success2() {
+                  deferred.resolve();
+                },
+                function error2(err) {
+                  deferred.reject(err);
+                }
+              )
+            } else {
+              deferred.resolve();
+            }
+          },
+          function error(err) {
+            if(err === "OVER_QUERY_LIMIT") {
+              if(timeout < minSleep) timeout = minSleep
+              else timeout = timeout * 2;
+              console.log('OVER_QUERY_LIMIT - increasing to ' + timeout);
+              processRecursive(i, rounds, timeout).then(
+                function success2() {
+                  deferred.resolve();
+                },
+                function error2(err) {
+                  deferred.reject(err);
+                }
+              )
+            } else {
+              deferred.reject(err);
+            }
           }
-        },
-        function error(err) {
-          if(err === "OVER_QUERY_LIMIT") {
-            if(timeout < minSleep) timeout = minSleep
-            else timeout = timeout * 2;
-            console.log('OVER_QUERY_LIMIT - increasing to ' + timeout);
-            processRecursive(i, rounds, timeout).then(
-              function success2() {
-                deferred.resolve();
-              },
-              function error2(err) {
-                deferred.reject(err);
-              }
-            )
-          } else {
-            deferred.reject(err);
-          }
-        }
-      );
-    }, origins));
-
+        );
+      }, origins));
+    } else {
+      deferred.resolve();
+    }
   }, i, rounds, timeout), timeout);
-
   return deferred.promise;
 }
 
@@ -240,32 +243,19 @@ function callback(iteration, reqOrigins, response, status) {
       if(status !== "OVER_QUERY_LIMIT") logError('Error1 was: ' + status + ' / ' + JSON.stringify(response));
       deferred.reject(status);
     } else {
-      var origins = response.originAddresses;
-      var destinations = response.destinationAddresses;
       var outputDiv = document.getElementById('outputDiv');
-      //outputDiv.innerHTML = '';
-      //deleteOverlays();
-
-      //addMarker(destination, true, destination);
-
-      for (var i = 0; i < origins.length; i++) {
-        var results = response.rows[i].elements;
-        for (var j = 0; j < results.length; j++) {
-          //addMarker(origins[i], false, reqOrigins[i], results[j].duration);
-          //addMarker(destinations[j], true, destination, results[j].duration);
-          var loc = reqOrigins[i];
-          if(loc) {
-            var result = results[j];
-            if(result && result.distance && result.duration) {
-              areas[loc.lat()+'/'+loc.lng()] = {origin: loc, resultOrigin: origins[i], distance: result.distance, duration: result.duration};
-              //outputDiv.innerHTML = origins[i] + ': ' + results[j].distance.text + ' in '+ results[j].duration.text + '<br>' + outputDiv.innerHTML;
-              logInfo(iteration + '/' + rounds + '  ' + loc.lat() + ' / ' + loc.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
-            } else {
-              console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ', j: ' + j + ' - ' + result);
-            }
+      for (var i = 0; i < reqOrigins.length; i++) {
+        var origin = reqOrigins[i];
+        var result = response.rows[i].elements[0];
+        if(origin) {
+          if(result && result.distance && result.duration) {
+            areas[origin.lat()+'/'+origin.lng()] = {origin: origin, distance: result.distance, duration: result.duration};
+            logInfo(iteration + '/' + rounds + '  ' + origin.lat() + ' / ' + origin.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
           } else {
-            console.warn('loc undefined i: ' + i + ', iteration: ' + iteration);
+            console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ', j: ' + j + ' - ' + result);
           }
+        } else {
+          console.warn('origin undefined i: ' + i + ', iteration: ' + iteration);
         }
       }
       deferred.resolve();
@@ -284,53 +274,6 @@ function addMarker(reqLocation) {
         icon: destinationIcon
       });
 }
-
-/*function addMarkerOld(location, isDestination, reqLocation, duration) {
-  var icon;
-  if (isDestination) {
-    icon = destinationIcon;
-  } else {
-    icon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=' + duration.text + '|FFFF00|000000';
-  }
-  geocoder.geocode({'address': location}, function(results, status) {
-    if (status == google.maps.GeocoderStatus.OK) {
-      bounds.extend(results[0].geometry.location);
-      map.fitBounds(bounds);
-      var marker = new google.maps.Marker({
-        map: map,
-        position: reqLocation,
-        icon: icon,
-        title: duration ? ''+duration : ''
-      });
-      markersArray.push(marker);*/
-      
-      /*var rectangle = new google.maps.Rectangle({
-          strokeColor: '#FF0000',
-          strokeOpacity: 0.8,
-          strokeWeight: 2,
-          fillColor: '#FF0000',
-          fillOpacity: 0.1,
-          map: map,
-          bounds: new google.maps.LatLngBounds(
-            new google.maps.LatLng(49.2936688, 8.6317212),
-            new google.maps.LatLng(49.2836688, 8.6417212)
-          )
-        });*/
-      
-      
-    /*} else {
-      logError('Geocode was not successful for the following reason: '
-        + status);
-    }
-  });
-}*/
-
-/*function deleteOverlays() {
-  for (var i = 0; i < markersArray.length; i++) {
-    markersArray[i].setMap(null);
-  }
-  markersArray = [];
-}*/
 
 function logError(err) {
   var div = document.getElementById('errorDiv');

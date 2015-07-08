@@ -1,1 +1,1 @@
-# GoogleMapsDurationHeatMap
+# Google Maps Duration Heat Map

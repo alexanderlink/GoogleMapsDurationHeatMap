@@ -1,53 +1,45 @@
 <!DOCTYPE html>
+<!--
+  #%L
+  Google Maps Duration Heat Map
+  %%
+  Copyright (C) 2015 Alexander Link
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
 <html>
   <head>
-    <title>Distance Matrix service</title>
-    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true"></script>
-    <style>
-      html, body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-      }
-
-      #map-canvas {
-        height: 100%;
-        width: 70%;
-      }
-      #content-pane {
-        float:right;
-        width:28%;
-        padding-left: 2%;
-      }
-      #outputDiv {
-        font-size: 10px;
-      }
-      #errorDiv {
-        font-size: 10px;
-      }
-    </style>
-    <script src="q.js"></script>
+    <title>Google Maps Duration Heat Map</title>
+    <script src="http://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/q.js/0.9.2/q.min.js"></script>
     <script>
 var map;
-var geocoder;
-var bounds = new google.maps.LatLngBounds();
-var markersArray = [];
+var markersArray = {};
 var areas = {};
 var processed = -1;
 
 var service;
-var delta;
-var count;
+var directionsService;
+var directionsDisplay;
+var deltaX, deltaY;
 var sleep;
 var rounds;
-var minSleep = 1000;
+var minSleep = 2500;
 var allOrigins = [];
 
 
 var destination = new google.maps.LatLng(49.2936688, 8.6417212);
-
-var destinationIcon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=D|FF0000|000000';
-var originIcon = 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=O|FFFF00|000000';
 
 function initialize() {
   var opts = {
@@ -55,27 +47,38 @@ function initialize() {
     zoom: 10
   };
   map = new google.maps.Map(document.getElementById('map-canvas'), opts);
-  geocoder = new google.maps.Geocoder();
+  service = new google.maps.DistanceMatrixService();
+  directionsService = new google.maps.DirectionsService();
+  directionsDisplay = new google.maps.DirectionsRenderer();
+  directionsDisplay.setMap(map);
 }
 
-function calculateOrigins(dest) {
+function getLocationKey(location) {
+    return location.A.toFixed(7)+'/'+location.F.toFixed(7);
+}
+
+function calculateOrigins(dest, count) {
   var origins = [];
-  var log = '';
-  log += dest.lat() + " / " + dest.lng() + "\n";
   for(var i = 0; i < count; i++) {
     for(var j = 0; j < count; j++) {
-      var lat = dest.lat() - (delta*count/2.0) + (delta/2.0) + (delta*i);
-      var lng = dest.lng() - (delta*count/2.0) + (delta/2.0) + (delta*j);
-      log += lat + " / " + lng + "\n";
-      origins.push(new google.maps.LatLng(lat, lng));
+      var lat = dest.lat() - (deltaX*count/2.0) + (deltaX/2.0) + (deltaX*i);
+      var lng = dest.lng() - (deltaY*count/2.0) + (deltaY/2.0) + (deltaY*j);
+      var location = new google.maps.LatLng(lat, lng);
+      var key = getLocationKey(location);
+      var rectangle = markersArray[key];
+      if(rectangle) {
+        //logInfo('Skipping ' + key);
+      } else {
+        origins.push(location);
+      }
     }
   }
+  logInfo('calculateOrigins: ' + origins.length);
   return origins;
 }
 
 function calcColor(min, max, value) {
   var percent = (value-min) / (max-min);
-  //console.log(value + ' -> ' + percent);
   if(percent <= 0.05) return '#00ff00'
   if(percent <= 0.15) return '#00df00'
   if(percent <= 0.25) return '#1fbf00'
@@ -105,33 +108,38 @@ function markRectangles(areas) {
 }
 
 function markRectangle(location, color, durationText, distanceText) {
-   var lat = location.A;
-   var lng = location.F;
-   outputDiv.innerHTML = '...mark rectangle: ' + lat + '/' + lng + '<br>' + outputDiv.innerHTML;
-   var rectangle = new google.maps.Rectangle({
-          strokeColor: color,
-          strokeOpacity: 0.55,
-          strokeWeight: 0.2,
-          fillColor: color,
-          fillOpacity: 0.5,
-          map: map,
-          bounds: new google.maps.LatLngBounds(
-            new google.maps.LatLng(lat-(delta/2.0), lng-(delta/2.0)),
-            new google.maps.LatLng(lat+(delta/2.0), lng+(delta/2.0))
-          )
-        });
-  markersArray.push(rectangle);
-  google.maps.event.addListener(rectangle, 'click', function() {
+    var lat = location.A;
+    var lng = location.F;
+    var key = getLocationKey(location);
+    var rectangle = markersArray[key];
+    if(rectangle) {
+        rectangle.setMap(null);
+        rectangle = null;
+    }
+    rectangle = new google.maps.Rectangle({
+      strokeColor: color,
+      strokeOpacity: 0.55,
+      strokeWeight: 0.2,
+      fillColor: color,
+      fillOpacity: 0.5,
+      map: map,
+      bounds: new google.maps.LatLngBounds(
+        new google.maps.LatLng(lat-(deltaX/2.0), lng-(deltaY/2.0)),
+        new google.maps.LatLng(lat+(deltaX/2.0), lng+(deltaY/2.0))
+      )
+    });
+    markersArray[key] = rectangle;
+    google.maps.event.addListener(rectangle, 'click', function() {
       document.getElementById('duration').value = durationText;
       document.getElementById('distance').value = distanceText;
       document.getElementById('from').value = lat + ', ' + lng;
       document.getElementById('to').value = destination.lat() + ', ' + destination.lng();
       checkRoute(location);
-  });
+    });
 }
 
 function checkRoute(location) {
-  service.getDistanceMatrix(
+  /*service.getDistanceMatrix(
     {
       origins: [location],
       destinations: [destination],
@@ -142,7 +150,13 @@ function checkRoute(location) {
     }, 
     function(response, status) {
       logInfo(JSON.stringify(response, null, '  '));
-    });
+    });*/
+  directionsService.route({origin: location, destination: destination, travelMode: google.maps.TravelMode['DRIVING']},
+  function(response, status) {
+    if (status == google.maps.DirectionsStatus.OK) {
+      directionsDisplay.setDirections(response);
+    }
+  });
 }
 
 function partial(funct) {
@@ -153,36 +167,10 @@ function partial(funct) {
     };
 }
 
-function calculateDistances() {
-  deleteOverlays();
-  addMarker(destination);
-  if(document.getElementById("result").value) {
-    areas = JSON.parse(document.getElementById("result").value);
-    markRectangles(areas);
-  } else {
-    delta = Number(document.getElementById("delta").value);
-    count = Number(document.getElementById("count").value);
-    sleep = Number(document.getElementById("sleep").value);
-    service = new google.maps.DistanceMatrixService();
-    allOrigins = calculateOrigins(destination);
-    areas = {};
-    rounds = allOrigins.length/25;
-    processRecursive(0, rounds).then(
-      function success() {
-        document.getElementById("result").value = JSON.stringify(areas);
-        markRectangles(areas);
-      },
-      function error(err) {
-        logError('Some promises failed!');
-      }
-    );
-  }
-}
-
 function processRecursive(i, rounds, timeout) {
   var deferred = Q.defer();
   if(!timeout) timeout = 0;
-  console.log('processRecursive ' + i + ', ' + rounds + ', ' + timeout);
+  console.log('processRecursive ' + i + ', ' + rounds + ', ' + timeout + ' - left: ' + ((rounds-i) * timeout / 1000 / 60));
   setTimeout(partial(function(i, rounds, timeout){ 
     var maxPerRequest = 25;
     var start = i*maxPerRequest;
@@ -199,10 +187,12 @@ function processRecursive(i, rounds, timeout) {
         avoidHighways: false,
         avoidTolls: false
       }, partial(function(origins, response, status) {
+        logInfo('Iteration['+i+']: ' + status + ' - Remaining: ' + ((rounds-i) * timeout / 1000 / 60) + 'min');
         callback(i, origins, response, status).then(
           function success() {
             if(i < rounds) {
-              processRecursive(i+1, rounds, timeout).then(
+              markRectangles(areas);
+              processRecursive(i+1, rounds, minSleep).then(
                 function success2() {
                   deferred.resolve();
                 },
@@ -243,19 +233,17 @@ function processRecursive(i, rounds, timeout) {
 function callback(iteration, reqOrigins, response, status) {
   var deferred = Q.defer();
   try {
-    console.log('Callback['+iteration+']: ' + response + '/' + status);
     if (status != google.maps.DistanceMatrixStatus.OK) {
       if(status !== "OVER_QUERY_LIMIT") logError('Error1 was: ' + status + ' / ' + JSON.stringify(response));
       deferred.reject(status);
     } else {
-      var outputDiv = document.getElementById('outputDiv');
       for (var i = 0; i < reqOrigins.length; i++) {
         var origin = reqOrigins[i];
         var result = response.rows[i].elements[0];
         if(origin) {
           if(result && result.distance && result.duration) {
             areas[origin.lat()+'/'+origin.lng()] = {origin: origin, distance: result.distance, duration: result.duration};
-            logInfo(iteration + '/' + rounds + '  ' + origin.lat() + ' / ' + origin.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
+            logDetails(iteration + '/' + rounds + '  ' + origin.lat() + ' / ' + origin.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
           } else {
             console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ' - ' + result);
           }
@@ -276,9 +264,9 @@ function addMarker(reqLocation) {
   var marker = new google.maps.Marker({
       map: map,
       position: reqLocation,
-      icon: destinationIcon
+      icon: 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=D|FF0000|000000'
     });
-  markersArray.push(marker);
+  markersArray['destination'] = marker;
 }
 
 function logError(err) {
@@ -291,16 +279,81 @@ function logInfo(message) {
   div.innerHTML = message + '<br>' + div.innerHTML;
 }
 
+function logDetails(message) {
+  //TODO
+}
+
 function deleteOverlays() {
-  for (var i = 0; i < markersArray.length; i++) {
-    markersArray[i].setMap(null);
+  Object.keys(markersArray).forEach(function(key) {
+    markersArray[key].setMap(null);
+  });
+  markersArray = {};
+}
+
+function runIteration(iter) {
+    var deferred = Q.defer();
+    logInfo('Run Iteration ' + iter);
+    allOrigins = calculateOrigins(destination, iter);
+    rounds = allOrigins.length/25;
+    processRecursive(0, rounds).then(
+      function success() {
+        document.getElementById("result").value = JSON.stringify(areas);
+        markRectangles(areas);
+        deferred.resolve();
+      },
+      function error(err) {
+        logError('Some promises failed!');
+        deferred.reject(err);
+      }
+    );
+    return deferred.promise;
+}
+
+function calculateDistances() {
+  deleteOverlays();
+  addMarker(destination);
+  if(document.getElementById("result").value) {
+    areas = JSON.parse(document.getElementById("result").value);
+    markRectangles(areas);
+  } else {
+    deltaX = Number(document.getElementById("delta").value);
+    deltaY = deltaX * 1.5;
+    countLocal = Number(document.getElementById("count").value);
+    sleep = Number(document.getElementById("sleep").value);
+    areas = {};
+    var promise = runIteration(2);
+    for(var i = 4; i <= countLocal; i+=2) {
+        promise = promise.then(partial(runIteration, i));
+    }
   }
-  markersArray = [];
 }
 
 google.maps.event.addDomListener(window, 'load', initialize);
 
     </script>
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      #map-canvas {
+        height: 100%;
+        width: 70%;
+      }
+      #content-pane {
+        float:right;
+        width:28%;
+        padding-left: 2%;
+      }
+      #outputDiv {
+        font-size: 10px;
+      }
+      #errorDiv {
+        font-size: 10px;
+      }
+    </style>
   </head>
   <body>
     <div id="content-pane">

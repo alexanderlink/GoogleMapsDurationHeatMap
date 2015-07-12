@@ -51,6 +51,12 @@ function initialize() {
   directionsService = new google.maps.DirectionsService();
   directionsDisplay = new google.maps.DirectionsRenderer();
   directionsDisplay.setMap(map);
+  
+  google.maps.event.addListener(map, 'click', function(e) {
+    map.setCenter(e.latLng);
+    destination = e.latLng;
+  });
+
 }
 
 function getLocationKey(location) {

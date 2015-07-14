@@ -21,6 +21,30 @@
 <html>
   <head>
     <title>Google Maps Duration Heat Map</title>
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      #map-canvas {
+        height: 100%;
+        width: 100%;
+      }
+      
+      #content-pane {
+        float:right;
+        width:28%;
+        padding-left: 2%;
+      }
+      #outputDiv {
+        font-size: 10px;
+      }
+      #errorDiv {
+        font-size: 10px;
+      }
+    </style>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true"></script>
@@ -41,15 +65,16 @@ var sleep;
 var rounds;
 var minSleep = 2500;
 var allOrigins = [];
+var result;
 
 
-var destination = new google.maps.LatLng(49.2936688, 8.6417212);
+var destination = new google.maps.LatLng(49.4874592, 8.466039499999965);
 
 
 
 function initialize() {
   var opts = {
-    center: new google.maps.LatLng(49.2936688, 8.6417212),
+    center: destination,
     zoom: 12,
     scaleControl: true
   };
@@ -59,6 +84,7 @@ function initialize() {
   directionsService = new google.maps.DirectionsService();
   directionsDisplay = new google.maps.DirectionsRenderer();
   directionsDisplay.setMap(map);
+  
   
   google.maps.event.addListener(map, 'click', function(e) {
     setDestination(e.latLng);
@@ -149,10 +175,10 @@ function markRectangle(location, color, durationText, distanceText) {
     });
     markersArray[key] = rectangle;
     google.maps.event.addListener(rectangle, 'click', function() {
-      document.getElementById('duration').value = durationText;
-      document.getElementById('distance').value = distanceText;
-      document.getElementById('from').value = lat + ', ' + lng;
-      document.getElementById('to').value = destination.lat() + ', ' + destination.lng();
+      //document.getElementById('duration').value = durationText;
+      //document.getElementById('distance').value = distanceText;
+      //document.getElementById('from').value = lat + ', ' + lng;
+      //document.getElementById('to').value = destination.lat() + ', ' + destination.lng();
       checkRoute(location);
     });
 }
@@ -258,13 +284,13 @@ function callback(iteration, reqOrigins, response, status) {
     } else {
       for (var i = 0; i < reqOrigins.length; i++) {
         var origin = reqOrigins[i];
-        var result = response.rows[i].elements[0];
+        var _result = response.rows[i].elements[0];
         if(origin) {
-          if(result && result.distance && result.duration) {
-            areas[origin.lat()+'/'+origin.lng()] = {origin: origin, distance: result.distance, duration: result.duration};
-            logDetails(iteration + '/' + rounds + '  ' + origin.lat() + ' / ' + origin.lng() + ' : ' + result.distance.text + ' in '+ result.duration.text);
+          if(_result && _result.distance && _result.duration) {
+            areas[origin.lat()+'/'+origin.lng()] = {origin: origin, distance: _result.distance, duration: _result.duration};
+            logDetails(iteration + '/' + rounds + '  ' + origin.lat() + ' / ' + origin.lng() + ' : ' + _result.distance.text + ' in '+ _result.duration.text);
           } else {
-            console.warn('result incomplete i: ' + i + ', iteration: ' + iteration + ' - ' + result);
+            console.warn('_result incomplete i: ' + i + ', iteration: ' + iteration + ' - ' + _result);
           }
         } else {
           console.warn('origin undefined i: ' + i + ', iteration: ' + iteration);
@@ -281,7 +307,7 @@ function callback(iteration, reqOrigins, response, status) {
 
 function setDestinationMarker(reqLocation) {
   if(markersArray['destination']) {
-    markersArray['destination'].map = null;
+    markersArray['destination'].setMap(null);
   }
   markersArray['destination'] = new google.maps.Marker({
       map: map,
@@ -291,13 +317,13 @@ function setDestinationMarker(reqLocation) {
 }
 
 function logError(err) {
-  var div = document.getElementById('errorDiv');
-  div.innerHTML = err + '<br>' + div.innerHTML;
+  //var div = document.getElementById('errorDiv');
+  //div.innerHTML = err + '<br>' + div.innerHTML;
 }
 
 function logInfo(message) {
-  var div = document.getElementById('outputDiv');
-  div.innerHTML = message + '<br>' + div.innerHTML;
+  //var div = document.getElementById('outputDiv');
+  //div.innerHTML = message + '<br>' + div.innerHTML;
 }
 
 function logDetails(message) {
@@ -318,7 +344,7 @@ function runIteration(iter) {
     rounds = allOrigins.length/25;
     processRecursive(0, rounds).then(
       function success() {
-        document.getElementById("result").value = JSON.stringify(areas);
+        result = JSON.stringify(areas);
         markRectangles(areas);
         deferred.resolve();
       },
@@ -333,10 +359,10 @@ function runIteration(iter) {
 function calculateDistances() {
   deleteOverlays();
   setDestinationMarker(destination);
-  if(document.getElementById("result").value) {
-    areas = JSON.parse(document.getElementById("result").value);
+  /*if(result) {
+    areas = JSON.parse(result);
     markRectangles(areas);
-  } else {
+  } else {*/
     countLocal = Number($('#resolution').val());
     deltaX = Number($('#size').val()) / 111 / countLocal;
     deltaY = deltaX * 1.5;
@@ -346,80 +372,75 @@ function calculateDistances() {
     for(var i = 4; i <= countLocal; i+=2) {
         promise = promise.then(partial(runIteration, i));
     }
+  //}
+}
+
+function updateResolutionDropdown() {
+  var selected = $('#resolution option:selected').val();
+  selected = selected ? Number(selected) : 8;
+  $('#resolution option').remove();
+  for(var i = 4; i <= 256; i = i * 2) {
+    var text = i + 'x' + i + ' (' + (Number($('#size').val())/i*1000) + 'm boxes)';
+    var option = '<option ' + (selected === i ? 'selected' : '') + ' value="' + i + '">' + text + '</option>';
+    $('#resolution').append(option);
   }
 }
 
-google.maps.event.addDomListener(window, 'load', initialize);
+function geocodeDestination() {
+  initialize();
+  geocoder.geocode( { 'address': $('#destination').val()}, 
+    function(results, status) {
+      if (status == google.maps.GeocoderStatus.OK) {
+        setDestination(results[0].geometry.location);
+      } else {
+        alert("Geocode was not successful for the following reason: " + status);
+      }
+    }
+  );
+}
 
 $(function onReady() {
   $('#destination').keypress(function(e) {
     if(e.key.toLowerCase() === 'enter') {
-      geocoder.geocode( { 'address': $('#destination').val()}, 
-        function(results, status) {
-          if (status == google.maps.GeocoderStatus.OK) {
-            setDestination(results[0].geometry.location);
-          } else {
-            alert("Geocode was not successful for the following reason: " + status);
-          }
-        }
-      );
+      geocodeDestination();
+    }
+  });
+  $('#size').change(function(e) {
+    if(e.key.toLowerCase() === 'enter') {
+      updateResolutionDropdown();
     }
   });
   $('#start').click(function(e) {
+    geocodeDestination();
     calculateDistances();
   });
+  geocodeDestination();
+  updateResolutionDropdown();
 })
 
     </script>
-    <style>
-      html, body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-      }
-
-      #map-canvas {
-        height: 100%;
-        width: 70%;
-      }
-      #content-pane {
-        float:right;
-        width:28%;
-        padding-left: 2%;
-      }
-      #outputDiv {
-        font-size: 10px;
-      }
-      #errorDiv {
-        font-size: 10px;
-      }
-      #IO {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        width: 300px;
-        z-index: 1000;
-      }
-    </style>
   </head>
   <body>
   
-    <div id="IO" class="IO">
-      <input type="text" class="form-control" id="destination" placeholder="Destination">
-      <input type="text" class="form-control" id="size" width="50%" placeholder="Area size in km">
-      <select  class="form-control" id="resolution" size="5">
-        <option value="4">4x4</option>
-        <option value="8" selected>8x8</option>
-        <option value="16">16x16</option>
-        <option value="32">32x32</option>
-        <option value="64">64x64</option>
-        <option value="128">128x128</option>
-        <option value="256">256x256</option>
-      </select>
-      <button id="start" type="button" class="btn btn-success">Start</button>
+<nav class="navbar navbar-default navbar-fixed-top">
+  <div class="container-fluid">
+    <div class="collapse navbar-collapse">
+      <form class="navbar-form navbar-left" role="search">
+        <label for="destination">Destination</label>
+        <input type="text" class="form-control" id="destination" placeholder="Destination" value="Mannheim">
+        <label for="size">Area size</label>
+        <input type="text" class="form-control" id="size" size="4" placeholder="Area size in km" value="8">
+        <label for="size">Resolution</label>
+        <select  class="form-control" id="resolution" size="1"></select>
+        <button id="start" type="button" class="btn btn-success">Start</button>
+      </form>
     </div>
-  
-    <div id="content-pane">
+  </div>
+</nav>
+
+<div id="map-canvas">xxx</div>
+
+    <!--div id="content-pane">
       <div id="inputs">
         <p>
           <input type="text" id="delta" value="0.005" size="12"></input> 
@@ -435,9 +456,8 @@ $(function onReady() {
       </div>
       <div id="errorDiv" style="color:red"></div>
       <div id="outputDiv"></div>
-    </div>
-      
-    <div id="map-canvas"></div>
-  </body>
+    </div-->
+
+    </body>
 </html>
 

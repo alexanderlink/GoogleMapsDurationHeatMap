@@ -21,14 +21,18 @@
 <html>
   <head>
     <title>Google Maps Duration Heat Map</title>
-    <script src="http://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true"></script>
-    <script src="http://cdnjs.cloudflare.com/ajax/libs/q.js/0.9.2/q.min.js"></script>
-    <script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/q.js/0.9.2/q.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+    <script type="text/javascript">
 var map;
 var markersArray = {};
 var areas = {};
 var processed = -1;
 
+var geocoder;
 var service;
 var directionsService;
 var directionsDisplay;
@@ -41,22 +45,31 @@ var allOrigins = [];
 
 var destination = new google.maps.LatLng(49.2936688, 8.6417212);
 
+
+
 function initialize() {
   var opts = {
     center: new google.maps.LatLng(49.2936688, 8.6417212),
-    zoom: 10
+    zoom: 12,
+    scaleControl: true
   };
   map = new google.maps.Map(document.getElementById('map-canvas'), opts);
+  geocoder = new google.maps.Geocoder();
   service = new google.maps.DistanceMatrixService();
   directionsService = new google.maps.DirectionsService();
   directionsDisplay = new google.maps.DirectionsRenderer();
   directionsDisplay.setMap(map);
   
   google.maps.event.addListener(map, 'click', function(e) {
-    map.setCenter(e.latLng);
-    destination = e.latLng;
+    setDestination(e.latLng);
   });
+}
 
+function setDestination(latLng) {
+    map.setCenter(latLng);
+    destination = latLng;
+    $('#destination').val(latLng);
+    setDestinationMarker(latLng);
 }
 
 function getLocationKey(location) {
@@ -266,13 +279,15 @@ function callback(iteration, reqOrigins, response, status) {
   return deferred.promise;
 }
 
-function addMarker(reqLocation) {
-  var marker = new google.maps.Marker({
+function setDestinationMarker(reqLocation) {
+  if(markersArray['destination']) {
+    markersArray['destination'].map = null;
+  }
+  markersArray['destination'] = new google.maps.Marker({
       map: map,
       position: reqLocation,
       icon: 'https://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=D|FF0000|000000'
     });
-  markersArray['destination'] = marker;
 }
 
 function logError(err) {
@@ -317,15 +332,15 @@ function runIteration(iter) {
 
 function calculateDistances() {
   deleteOverlays();
-  addMarker(destination);
+  setDestinationMarker(destination);
   if(document.getElementById("result").value) {
     areas = JSON.parse(document.getElementById("result").value);
     markRectangles(areas);
   } else {
-    deltaX = Number(document.getElementById("delta").value);
+    countLocal = Number($('#resolution').val());
+    deltaX = Number($('#size').val()) / 111 / countLocal;
     deltaY = deltaX * 1.5;
-    countLocal = Number(document.getElementById("count").value);
-    sleep = Number(document.getElementById("sleep").value);
+    sleep = 3000;
     areas = {};
     var promise = runIteration(2);
     for(var i = 4; i <= countLocal; i+=2) {
@@ -335,6 +350,25 @@ function calculateDistances() {
 }
 
 google.maps.event.addDomListener(window, 'load', initialize);
+
+$(function onReady() {
+  $('#destination').keypress(function(e) {
+    if(e.key.toLowerCase() === 'enter') {
+      geocoder.geocode( { 'address': $('#destination').val()}, 
+        function(results, status) {
+          if (status == google.maps.GeocoderStatus.OK) {
+            setDestination(results[0].geometry.location);
+          } else {
+            alert("Geocode was not successful for the following reason: " + status);
+          }
+        }
+      );
+    }
+  });
+  $('#start').click(function(e) {
+    calculateDistances();
+  });
+})
 
     </script>
     <style>
@@ -359,9 +393,32 @@ google.maps.event.addDomListener(window, 'load', initialize);
       #errorDiv {
         font-size: 10px;
       }
+      #IO {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        width: 300px;
+        z-index: 1000;
+      }
     </style>
   </head>
   <body>
+  
+    <div id="IO" class="IO">
+      <input type="text" class="form-control" id="destination" placeholder="Destination">
+      <input type="text" class="form-control" id="size" width="50%" placeholder="Area size in km">
+      <select  class="form-control" id="resolution" size="5">
+        <option value="4">4x4</option>
+        <option value="8" selected>8x8</option>
+        <option value="16">16x16</option>
+        <option value="32">32x32</option>
+        <option value="64">64x64</option>
+        <option value="128">128x128</option>
+        <option value="256">256x256</option>
+      </select>
+      <button id="start" type="button" class="btn btn-success">Start</button>
+    </div>
+  
     <div id="content-pane">
       <div id="inputs">
         <p>

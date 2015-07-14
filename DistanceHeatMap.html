@@ -344,7 +344,7 @@ function runIteration(iter) {
     rounds = allOrigins.length/25;
     processRecursive(0, rounds).then(
       function success() {
-        result = JSON.stringify(areas);
+        $('#export').val(JSON.stringify(areas));
         markRectangles(areas);
         deferred.resolve();
       },
@@ -359,10 +359,12 @@ function runIteration(iter) {
 function calculateDistances() {
   deleteOverlays();
   setDestinationMarker(destination);
-  /*if(result) {
-    areas = JSON.parse(result);
+  var importText = $('#import').val();
+  if(importText) {
+    $('#import').val('');
+    areas = JSON.parse(importText);
     markRectangles(areas);
-  } else {*/
+  } else {
     countLocal = Number($('#resolution').val());
     deltaX = Number($('#size').val()) / 111 / countLocal;
     deltaY = deltaX * 1.5;
@@ -372,7 +374,7 @@ function calculateDistances() {
     for(var i = 4; i <= countLocal; i+=2) {
         promise = promise.then(partial(runIteration, i));
     }
-  //}
+  }
 }
 
 function updateResolutionDropdown() {
@@ -399,7 +401,7 @@ function geocodeDestination() {
   );
 }
 
-$(function onReady() {
+$(function() {
   $('#destination').keypress(function(e) {
     if(e.key.toLowerCase() === 'enter') {
       geocodeDestination();
@@ -414,8 +416,14 @@ $(function onReady() {
     geocodeDestination();
     calculateDistances();
   });
+  $('#startImport').click(function(e) {
+    geocodeDestination();
+    calculateDistances();
+  });
+  
   geocodeDestination();
   updateResolutionDropdown();
+  $('[data-toggle="tooltip"]').tooltip();
 })
 
     </script>
@@ -427,18 +435,75 @@ $(function onReady() {
     <div class="collapse navbar-collapse">
       <form class="navbar-form navbar-left" role="search">
         <label for="destination">Destination</label>
-        <input type="text" class="form-control" id="destination" placeholder="Destination" value="Mannheim">
+        <input type="text" class="form-control" id="destination" placeholder="Destination" value="Mannheim" data-toggle="tooltip" data-placement="bottom" title="Enter a destination here. You can also left click on the map to select.">
         <label for="size">Area size</label>
-        <input type="text" class="form-control" id="size" size="4" placeholder="Area size in km" value="8">
+        <input type="text" class="form-control" id="size" size="4" placeholder="Area size in km" value="8" data-toggle="tooltip" data-placement="bottom" title="How many kilometers shall one side of the generated square have?">
         <label for="size">Resolution</label>
-        <select  class="form-control" id="resolution" size="1"></select>
-        <button id="start" type="button" class="btn btn-success">Start</button>
+        <select  class="form-control" id="resolution" size="1" data-toggle="tooltip" data-placement="bottom" title="How many separate fields shall be generated inside the area?">
+        </select>
+        <button id="start" type="button" class="btn btn-primary" data-toggle="tooltip" data-placement="bottom" title="Generate Duration Heat Map">
+          Start
+        </button>
+        <button id="exportButton" type="button" class="btn btn-default" aria-label="Left Align" data-toggle="modal" data-target="#exportModal" title="Export processed data">
+          <span class="glyphicon glyphicon-open" aria-hidden="true"></span>
+        </button>
+        <button id="importButton" type="button" class="btn btn-default" aria-label="Left Align" data-toggle="modal" data-target="#importModal" title="Import data from previous run">
+          <span class="glyphicon glyphicon-save" aria-hidden="true"></span>
+        </button>
       </form>
     </div>
   </div>
 </nav>
 
-<div id="map-canvas">xxx</div>
+<div id="map-canvas"></div>
+
+
+<div class="modal fade" id="exportModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        <h4 class="modal-title">Export Processed Data</h4>
+      </div>
+      <div class="modal-body">
+        <p>Simply copy the content from the text area. You can import it again by clicking the import button and pasting it in the text area there.</p>
+        <textarea id="export" rows="10" cols="80" class="form-group"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+        <!--button type="button" class="btn btn-primary">Save changes</button-->
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+
+
+
+<div class="modal fade" id="importModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        <h4 class="modal-title">Import Processed Data</h4>
+      </div>
+      <div class="modal-body">
+        <p>Simply paste the content to the text area.</p>
+        <textarea id="import" rows="10" cols="80" class="form-group">NOT IMPLEMENTED YET!</textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+        <button id="startImport" type="button" class="btn btn-primary" data-toggle="tooltip" data-placement="bottom" data-dismiss="modal" title="Import Duration Heat Map">
+          Import
+        </button>
+
+        <!--button type="button" class="btn btn-primary">Save changes</button-->
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+
 
     <!--div id="content-pane">
       <div id="inputs">

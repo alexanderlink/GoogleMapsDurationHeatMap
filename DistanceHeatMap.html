@@ -70,6 +70,13 @@ var result;
 
 var destination = new google.maps.LatLng(49.4874592, 8.466039499999965);
 
+var data = {
+    params: {
+        destination: new google.maps.LatLng(49.4874592, 8.466039499999965),
+        size: 4,
+        resolution: 8
+    }
+};
 
 
 function initialize() {
@@ -85,7 +92,6 @@ function initialize() {
   directionsDisplay = new google.maps.DirectionsRenderer();
   directionsDisplay.setMap(map);
   
-  
   google.maps.event.addListener(map, 'click', function(e) {
     setDestination(e.latLng);
   });
@@ -93,9 +99,24 @@ function initialize() {
 
 function setDestination(latLng) {
     map.setCenter(latLng);
-    destination = latLng;
-    $('#destination').val(latLng);
+    destination = latLng; //TODO: get rid of
+    data.params.destination = latLng;
+    $('#destination').val(JSON.stringify(latLng));
     setDestinationMarker(latLng);
+    updateURLParams();
+}
+
+function setSize(size) {
+    data.params.size = size;
+    $('#size').val(size);
+    updateResolutionDropdown();
+    updateURLParams();
+}
+
+function setResolution(resolution) {
+    data.params.resolution = resolution;
+    updateResolutionDropdown(resolution);
+    updateURLParams();
 }
 
 function getLocationKey(location) {
@@ -377,9 +398,15 @@ function calculateDistances() {
   }
 }
 
-function updateResolutionDropdown() {
-  var selected = $('#resolution option:selected').val();
-  selected = selected ? Number(selected) : 8;
+function updateResolutionDropdown(selectValue) {
+  var selected;
+  if(selectValue) {
+    selected = Number(selectValue);
+  } else if($('#resolution option:selected').val()){
+    selected = Number($('#resolution option:selected').val());
+  } else {
+    selected = 8;
+  }
   $('#resolution option').remove();
   for(var i = 4; i <= 256; i = i * 2) {
     var text = i + 'x' + i + ' (' + (Number($('#size').val())/i*1000) + 'm boxes)';
@@ -389,16 +416,57 @@ function updateResolutionDropdown() {
 }
 
 function geocodeDestination() {
-  initialize();
-  geocoder.geocode( { 'address': $('#destination').val()}, 
-    function(results, status) {
-      if (status == google.maps.GeocoderStatus.OK) {
-        setDestination(results[0].geometry.location);
-      } else {
-        alert("Geocode was not successful for the following reason: " + status);
-      }
+  var dest = $('#destination').val().trim();
+  if(dest.indexOf('{') !== 0 && dest.indexOf('(') !== 0) {
+      geocoder.geocode( { 'address': dest }, 
+        function(results, status) {
+          if (status == google.maps.GeocoderStatus.OK) {
+            setDestination(results[0].geometry.location);
+          } else {
+            alert("Geocode was not successful for the following reason: " + status);
+          }
+        }
+      );
+  }
+}
+
+function parseURLParams() {
+    var result = {};
+    if(location.search.length < 1) return result;
+    var tuples = location.search.substring(1).split('&');
+    tuples.forEach(function(elem) {
+        var tuple = elem.split('=');
+        if(tuple.length === 2) result[decodeURIComponent(tuple[0])] = decodeURIComponent(tuple[1]);
+    });
+    if(result.params) {
+        return JSON.parse(result.params);
+    } else {
+        return {};
     }
+}
+
+function updateURLParams() {
+  window.history.pushState('page', 'Title', '?params=' + 
+    encodeURIComponent(JSON.stringify(data.params))
   );
+}
+
+function evaluateURLParams() {
+  var urlParams = parseURLParams();
+  if(urlParams && urlParams.destination) {
+    var dest = urlParams.destination;
+    if(dest.A && !dest.lat) dest.lat = dest.A;
+    if(dest.F && !dest.lng) dest.lng = dest.F;
+    delete dest.A;
+    delete dest.F;
+    setDestination(dest);
+  }
+  if(urlParams && urlParams.size) {
+    setSize(urlParams.size);
+  }
+  if(urlParams && urlParams.resolution) {
+    data.params.resolution = urlParams.resolution;
+  }
 }
 
 $(function() {
@@ -408,9 +476,10 @@ $(function() {
     }
   });
   $('#size').change(function(e) {
-    if(e.key.toLowerCase() === 'enter') {
-      updateResolutionDropdown();
-    }
+    setSize($('#size').val());
+  });
+  $('#resolution').change(function(e) {
+    setResolution($('#resolution').val());
   });
   $('#start').click(function(e) {
     geocodeDestination();
@@ -421,6 +490,8 @@ $(function() {
     calculateDistances();
   });
   
+  initialize();
+  evaluateURLParams();
   geocodeDestination();
   updateResolutionDropdown();
   $('[data-toggle="tooltip"]').tooltip();
@@ -438,7 +509,7 @@ $(function() {
         <input type="text" class="form-control" id="destination" placeholder="Destination" value="Mannheim" data-toggle="tooltip" data-placement="bottom" title="Enter a destination here. You can also left click on the map to select.">
         <label for="size">Area size</label>
         <input type="text" class="form-control" id="size" size="4" placeholder="Area size in km" value="8" data-toggle="tooltip" data-placement="bottom" title="How many kilometers shall one side of the generated square have?">
-        <label for="size">Resolution</label>
+        <label for="resolution">Resolution</label>
         <select  class="form-control" id="resolution" size="1" data-toggle="tooltip" data-placement="bottom" title="How many separate fields shall be generated inside the area?">
         </select>
         <button id="start" type="button" class="btn btn-primary" data-toggle="tooltip" data-placement="bottom" title="Generate Duration Heat Map">
